@@ -2,6 +2,7 @@ package io.trigger.forge.android.modules.topbar;
 
 import io.trigger.forge.android.core.ForgeApp;
 import io.trigger.forge.android.core.ForgeFile;
+import io.trigger.forge.android.core.ForgeLog;
 import io.trigger.forge.android.core.ForgeTask;
 import io.trigger.forge.android.util.BitmapUtil;
 
@@ -9,7 +10,11 @@ import java.io.FileInputStream;
 import java.io.IOException;
 
 import android.app.Activity;
+import android.content.Context;
+import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
 import android.graphics.Color;
+import android.graphics.drawable.BitmapDrawable;
 import android.graphics.drawable.ColorDrawable;
 import android.graphics.drawable.Drawable;
 import android.util.DisplayMetrics;
@@ -83,17 +88,18 @@ public class API {
         task.performUI(new Runnable() {
             public void run() {
                 try {
+                	Activity forgeActivity = ForgeApp.getActivity();
                     DisplayMetrics metrics = new DisplayMetrics();
-                    ((Activity) ForgeApp.getActivity()).getWindowManager().getDefaultDisplay().getMetrics(metrics);
+                    forgeActivity.getWindowManager().getDefaultDisplay().getMetrics(metrics);
                     final int margin = Math.round(metrics.density * 4);
 					
                     int tint = 0xFF1C8DD9;
                     if (task.params.has("tint")) {
-						JsonArray colorArray = task.params.getAsJsonArray("tint");
-						tint = Color.argb(colorArray.get(3).getAsInt(), colorArray.get(0).getAsInt(), colorArray.get(1).getAsInt(), colorArray.get(2).getAsInt());
+                        JsonArray colorArray = task.params.getAsJsonArray("tint");
+                        tint = Color.argb(colorArray.get(3).getAsInt(), colorArray.get(0).getAsInt(), colorArray.get(1).getAsInt(), colorArray.get(2).getAsInt());
                     }
 
-					final LinearLayout button = new LinearLayout(ForgeApp.getActivity());
+                    final LinearLayout button = new LinearLayout(ForgeApp.getActivity());
                     button.setLongClickable(true);
                     button.setOnTouchListener(new OnTouchListener() {
                         public boolean onTouch(View v, MotionEvent event) {
@@ -145,7 +151,39 @@ public class API {
 
                         if (task.params.has("prerendered") && 
                             task.params.get("prerendered").getAsBoolean()) {
-                            icon = Drawable.createFromStream(iconStream, null);
+                            // Grab the raw bitmap.
+                            Bitmap startIcon = BitmapFactory.decodeStream(iconStream);
+
+                            // What's its density?
+                            int iconDensity = startIcon.getDensity();
+
+                            // We assume that the image is at DENSITY_DEFAULT pixels.  Yay?
+                            // So.  We want to scale to 32 dp (not px) high; what scale factor
+                            // is that?
+
+                            double displayScaleFactor = ((double) metrics.densityDpi /
+                                                         (double) DisplayMetrics.DENSITY_DEFAULT);
+                            double scaledHeight = 32.0 * displayScaleFactor;
+                            
+                            // What width does that imply?
+                            double imageScaleFactor = scaledHeight / (double)startIcon.getHeight();
+                            double scaledWidth = (double)startIcon.getWidth() * imageScaleFactor;
+
+                            // OK, finally!
+                            ForgeLog.d(String.format("screen density %d => dSF %.2f, iSF %.2f",
+                                                     metrics.densityDpi, 
+                                                     displayScaleFactor, imageScaleFactor));
+                            ForgeLog.d(String.format("image size %dx%d => %dx%d",
+                                                     startIcon.getWidth(), startIcon.getHeight(),
+                                                     (int)scaledWidth, (int)scaledHeight));
+
+                            Bitmap scaledIcon = 
+                                Bitmap.createScaledBitmap(startIcon, 
+                                                          (int)scaledWidth, (int)scaledHeight,
+                                                          false);
+                        	
+                            Context context = forgeActivity.getBaseContext();
+                            icon = new BitmapDrawable(context.getResources(), scaledIcon);
                         }
                         else {
                             icon =
